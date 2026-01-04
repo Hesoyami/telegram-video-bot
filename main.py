@@ -5,11 +5,8 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 import yt_dlp
 from flask import Flask, request
 
-# ================== CONFIG ==================
-
-TOKEN = os.getenv("TOKEN", "8317431261:AAEr8LWl_c0Gr6PExEhMTJX3Qsv9F_mCjWo")
+TOKEN = os.getenv("TOKEN", "ВАШ_ТОКЕН")
 bot = telebot.TeleBot(TOKEN)
-
 app = Flask(__name__)
 user_states = {}
 
@@ -23,12 +20,13 @@ def mb(size):
     except Exception:
         return "≈ ? МБ"
 
-
 def get_formats(url):
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
+        "nocheckcertificate": True,
+        "format_sort": ["res:720", "res:480", "res:360", "res:240"],
     }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=False)
@@ -38,11 +36,7 @@ def get_formats(url):
 
 @bot.message_handler(commands=["start"])
 def start(message):
-    bot.reply_to(
-        message,
-        "Привет! Пришли ссылку на видео, и я предложу варианты качества для скачивания."
-    )
-
+    bot.reply_to(message, "Привет! Пришли ссылку на видео (YouTube, Pinterest, Facebook), и я дам варианты скачивания.")
 
 @bot.message_handler(func=lambda m: True)
 def handle_link(message):
@@ -52,14 +46,10 @@ def handle_link(message):
     try:
         formats, title = get_formats(url)
     except Exception as e:
-        bot.reply_to(message, f"Не удалось получить информацию о видео.\n{e}")
+        bot.reply_to(message, f"Ошибка при получении информации о видео:\n{e}")
         return
 
-    user_states[user_id] = {
-        "url": url,
-        "formats": formats,
-        "title": title
-    }
+    user_states[user_id] = {"url": url, "formats": formats, "title": title}
 
     keyboard = InlineKeyboardMarkup()
     qualities = {}
@@ -73,19 +63,10 @@ def handle_link(message):
 
     for h in sorted(qualities.keys()):
         fmt_id, size = qualities[h]
-        keyboard.add(
-            InlineKeyboardButton(
-                f"{h}p ({mb(size)})",
-                callback_data=f"v:{fmt_id}"
-            )
-        )
+        keyboard.add(InlineKeyboardButton(f"{h}p ({mb(size)})", callback_data=f"v:{fmt_id}"))
 
-    keyboard.add(
-        InlineKeyboardButton("Лучшее качество", callback_data="best")
-    )
-
+    keyboard.add(InlineKeyboardButton("Лучшее качество", callback_data="best"))
     bot.reply_to(message, "Выбери качество:", reply_markup=keyboard)
-
 
 @bot.callback_query_handler(func=lambda c: True)
 def handle_quality(call):
@@ -109,10 +90,13 @@ def handle_quality(call):
         "format": fmt,
         "outtmpl": "video.%(ext)s",
         "merge_output_format": "mp4",
-        "retries": 10,
-        "fragment_retries": 10,
-        "socket_timeout": 30,
-        "http_chunk_size": 10 * 1024 * 1024,
+        "retries": 15,
+        "fragment_retries": 15,
+        "noplaylist": True,
+        "nocheckcertificate": True,
+        "socket_timeout": 60,
+        "http_chunk_size": 8 * 1024 * 1024,  # 8MB chunk
+        "progress_hooks": [lambda d: print(d)],
         "quiet": True,
         "no_warnings": True,
     }
@@ -121,33 +105,27 @@ def handle_quality(call):
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
 
+        # Ищем скачанный файл
         for file in os.listdir("."):
             if file.startswith("video."):
                 with open(file, "rb") as f:
                     bot.send_video(user_id, f)
                 os.remove(file)
                 break
-
     except Exception as e:
-        bot.send_message(
-            user_id,
-            f"Ошибка при скачивании:\n{e}\n\nПопробуй другое качество или ссылку."
-        )
+        bot.send_message(user_id, f"Ошибка при скачивании:\n{e}\nПопробуй другое качество или ссылку.")
 
 # ================== WEBHOOK ==================
 
 @app.route("/", methods=["POST"])
 def webhook():
-    json_str = request.get_data().decode("utf-8")
-    update = telebot.types.Update.de_json(json_str)
+    update = telebot.types.Update.de_json(request.get_data().decode("utf-8"))
     bot.process_new_updates([update])
     return "OK", 200
-
 
 @app.route("/", methods=["GET"])
 def index():
     return "Bot is running", 200
-
 
 def setup_webhook():
     url = os.getenv("RENDER_EXTERNAL_URL")
@@ -156,9 +134,6 @@ def setup_webhook():
         time.sleep(1)
         bot.set_webhook(url=url)
         print(f"Webhook set to {url}")
-
-
-# ================== START ==================
 
 if __name__ == "__main__":
     setup_webhook()
