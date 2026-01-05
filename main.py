@@ -4,8 +4,8 @@ import telebot
 import yt_dlp
 from flask import Flask, request
 
-TOKEN = "8317431261:AAEr8LWl_c0Gr6PExEhMTJX3Qsv9F_mCjWo"
-WEBHOOK_URL = "https://telegram-video-bot-bbmt.onrender.com"
+TOKEN = "TOKEN"
+WEBHOOK_URL = "WEBHOOK_URL"
 PORT = int(os.environ.get("PORT", 8080))
 
 bot = telebot.TeleBot(TOKEN, threaded=True)
@@ -141,3 +141,4 @@ if __name__ == "__main__":
     bot.remove_webhook()
     bot.set_webhook(url=f"{WEBHOOK_URL}/webhook")
     app.run(host="0.0.0.0", port=PORT)
+
